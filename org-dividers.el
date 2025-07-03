@@ -4,9 +4,9 @@
 ;;
 ;; Author: Taro Sato <okomestudio@gmail.com>
 ;; URL: https://github.com/okomestudio/org-dividers
-;; Version: 0.1.1
+;; Version: 0.1.2
 ;; Keywords: org
-;; Package-Requires: ((emacs "30.1"))
+;; Package-Requires: ((emacs "30.1") (org "9.7"))
 ;;
 ;;; License:
 ;;
@@ -99,6 +99,12 @@
       (overlay-put ov 'evaporate t)
       (overlay-put ov 'isearch-open-invisible t))))
 
+(defun org-dividers-heading-overlays-delete-all ()
+  "Delete all `org-dividers' overlays."
+  (dolist (ov (overlays-in (point-min) (point-max)))
+    (when (eq (overlay-get ov 'category) 'org-dividers)
+      (delete-overlay ov))))
+
 (defcustom org-dividers-heading-regexp nil
   "Match regexp for heading texts to be styled."
   :group 'org-dividers
@@ -113,6 +119,7 @@
   "Apply styles to all headings in the current Org buffer.
 See `org-map-entries' for the description of MATCH."
   (when (and (derived-mode-p 'org-mode) org-dividers-heading-regexp)
+    (org-dividers-heading-overlays-delete-all)
     (org-map-entries
      (lambda ()
        (when-let*
