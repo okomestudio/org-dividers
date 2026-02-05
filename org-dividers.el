@@ -4,7 +4,7 @@
 ;;
 ;; Author: Taro Sato <okomestudio@gmail.com>
 ;; URL: https://github.com/okomestudio/org-dividers
-;; Version: 0.2.1
+;; Version: 0.2.2
 ;; Keywords: org
 ;; Package-Requires: ((emacs "30.1") (org "9.7"))
 ;;
@@ -114,27 +114,29 @@ See the documentation for `org-map-entires' for what MATCH means."
   "Apply styling to all headings with region.
 When given, BEG and END specify a region, and LEN is the length of content being
 removed. When not given, the region will be the entire buffer."
-  (setq beg (or beg (point-min))
-        end (or end (point-max)))
-  (save-restriction
-    (narrow-to-region beg end)
-    (org-dividers-heading-remove beg end len)
-    (remove-overlays beg end 'category 'org-dividers)
-    (org-map-entries
-     (lambda ()
-       (when-let*
-           ((s (org-element-property :title (org-element-at-point)))
-            (_ (string-match org-dividers-heading-regexp s)))
-         (org-dividers-heading--draw s)))
-     org-dividers-heading-match)))
+  (when (or (null len) (> len 0))
+    (setq beg (or beg (point-min))
+          end (or end (point-max)))
+    (save-restriction
+      (narrow-to-region beg end)
+      (org-dividers-heading-remove beg end len)
+      (remove-overlays beg end 'category 'org-dividers)
+      (org-map-entries
+       (lambda ()
+         (when-let*
+             ((s (org-element-property :title (org-element-at-point)))
+              (_ (string-match org-dividers-heading-regexp s)))
+           (org-dividers-heading--draw s)))
+       org-dividers-heading-match))))
 
 (defun org-dividers-heading-remove (&optional beg end len)
   "Remove all styles from heading.
 When given, BEG and END specify a region, and LEN is the length of content being
 removed. When not given, the region will be the entire buffer."
-  (setq beg (or beg (point-min))
-        end (or end (point-max)))
-  (remove-overlays beg end 'category 'org-dividers))
+  (when (or (null len) (> len 0))
+    (setq beg (or beg (point-min))
+          end (or end (point-max)))
+    (remove-overlays beg end 'category 'org-dividers)))
 
 ;;;###autoload
 (define-minor-mode org-dividers-mode
