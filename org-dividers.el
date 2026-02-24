@@ -4,7 +4,7 @@
 ;;
 ;; Author: Taro Sato <okomestudio@gmail.com>
 ;; URL: https://github.com/okomestudio/org-dividers
-;; Version: 0.2.4
+;; Version: 0.2.5
 ;; Keywords: org
 ;; Package-Requires: ((emacs "30.1") (org "9.7"))
 ;;
@@ -79,25 +79,24 @@
 (defface org-dividers-heading '((t :inherit default))
   "Face used as heading.")
 
-(defun org-dividers-heading--draw (title)
-  "Style heading with TITLE at point."
-  (save-excursion
-    (org-back-to-heading t)
-    (let* ((beg (point))
-           (end (line-end-position))
-           (face 'org-dividers-heading)
-           (window-width (window-max-chars-per-line nil face))
-           (suffix " ⎯⎯")
-           (dash-count (max 0 (- window-width 1
-                                 (string-width title)
-                                 (string-width suffix))))
-           (text (concat (make-string dash-count ?⎯) " " title suffix))
-           (ov (make-overlay beg end)))
-      (overlay-put ov 'category 'org-dividers)
-      (overlay-put ov 'face face)
-      (overlay-put ov 'display text)
-      (overlay-put ov 'evaporate t)
-      (overlay-put ov 'isearch-open-invisible t))))
+(defun org-dividers-heading--draw (hl)
+  "Style headline element HL."
+  (let* ((beg (org-element-property :begin hl))
+         (end (and (save-excursion (goto-char beg) (line-end-position))))
+         (title (org-element-property :title hl))
+         (face 'org-dividers-heading)
+         (win-width (window-max-chars-per-line nil face))
+         (suffix " ⎯⎯")
+         (dash-count (max 0 (- win-width 1
+                               (string-width title)
+                               (string-width suffix))))
+         (text (concat (make-string dash-count ?⎯) " " title suffix))
+         (ov (make-overlay beg end nil 'front-adavnce)))
+    (overlay-put ov 'category 'org-dividers)
+    (overlay-put ov 'face face)
+    (overlay-put ov 'display text)
+    (overlay-put ov 'evaporate t)
+    (overlay-put ov 'isearch-open-invisible t)))
 
 (defcustom org-dividers-heading-regexp nil
   "Match regexp for heading texts to be styled."
@@ -123,10 +122,12 @@ removed. When not given, the region will be the entire buffer."
       (org-map-entries
        (lambda ()
          (when-let*
-             ((s (org-element-property :title (org-element-at-point)))
-              (_ (and org-dividers-heading-regexp s
-                      (string-match org-dividers-heading-regexp s))))
-           (org-dividers-heading--draw s)))
+             ((el (org-element-at-point))
+              (hl (and (eq (org-element-type el) 'headline) el))
+              (title (org-element-property :title hl)))
+           (when (and org-dividers-heading-regexp
+                      (string-match org-dividers-heading-regexp title))
+             (org-dividers-heading--draw hl))))
        org-dividers-heading-match))))
 
 (defun org-dividers-heading-remove (&optional beg end len)
