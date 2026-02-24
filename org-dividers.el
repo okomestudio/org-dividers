@@ -4,7 +4,7 @@
 ;;
 ;; Author: Taro Sato <okomestudio@gmail.com>
 ;; URL: https://github.com/okomestudio/org-dividers
-;; Version: 0.2.3
+;; Version: 0.2.4
 ;; Keywords: org
 ;; Package-Requires: ((emacs "30.1") (org "9.7"))
 ;;
@@ -120,7 +120,6 @@ removed. When not given, the region will be the entire buffer."
     (save-restriction
       (narrow-to-region beg end)
       (org-dividers-heading-remove beg end len)
-      (remove-overlays beg end 'category 'org-dividers)
       (org-map-entries
        (lambda ()
          (when-let*
