@@ -4,7 +4,7 @@
 ;;
 ;; Author: Taro Sato <okomestudio@gmail.com>
 ;; URL: https://github.com/okomestudio/org-dividers
-;; Version: 0.2.5
+;; Version: 0.3.1
 ;; Keywords: org
 ;; Package-Requires: ((emacs "30.1") (org "9.7"))
 ;;
@@ -74,86 +74,117 @@
             (overlay-put ov 'evaporate t))
           (goto-char pt))))))
 
-;;; Headings
+;;; Headlines
 
-(defface org-dividers-heading '((t :inherit default))
-  "Face used as heading.")
+(defcustom org-dividers-headline-regexp nil
+  "Match regexp for headline texts to be styled."
+  :group 'org-dividers
+  :type 'string)
 
-(defun org-dividers-heading--draw (hl)
-  "Style headline element HL."
+(defcustom org-dividers-headline-match nil
+  "Value for MATCH in `org-map-entries'.
+See the documentation for `org-map-entires' for what MATCH means."
+  :group 'org-dividers
+  :type 'string)
+
+(defcustom org-dividers-headline-padding-outer 1
+  "Outer padding for headline dividers."
+  :group 'org-dividers
+  :type 'number)
+
+(defcustom org-dividers-headline-padding-inner 1
+  "Inner padding for headline dividers."
+  :group 'org-dividers
+  :type 'number)
+
+(defcustom org-dividers-headline-text-position -2
+  "Headline text position from the left.
+If negative, the position is from the right."
+  :group 'org-dividers
+  :type 'number)
+
+(defface org-dividers-headline '((t :inherit default))
+  "Face used for headline dividers.")
+
+(defun org-dividers-headline--format (text face)
+  "Format divider given headline TEXT and FACE."
+  (let* ((total-width (window-max-chars-per-line nil face))
+         (dash-count (max 0 (- total-width
+                               (* 2 org-dividers-headline-padding-outer)
+                               (* 2 org-dividers-headline-padding-inner)
+                               (string-width text))))
+         (dash-left (if (> org-dividers-headline-text-position 0)
+                        org-dividers-headline-text-position
+                      (+ dash-count org-dividers-headline-text-position)))
+         (dash-right (if (> org-dividers-headline-text-position 0)
+                         (- dash-count org-dividers-headline-text-position)
+                       (abs org-dividers-headline-text-position))))
+    (concat (make-string org-dividers-headline-padding-outer ?\s)
+            (make-string dash-left ?⎯)
+            (make-string org-dividers-headline-padding-inner ?\s)
+            text
+            (make-string org-dividers-headline-padding-inner ?\s)
+            (make-string dash-right ?⎯)
+            (make-string org-dividers-headline-padding-outer ?\s))))
+
+(defun org-dividers-headline--draw (hl)
+  "Style headline element HL as divider overlay."
   (let* ((beg (org-element-property :begin hl))
          (end (and (save-excursion (goto-char beg) (line-end-position))))
+         (face 'org-dividers-headline)
          (title (org-element-property :title hl))
-         (face 'org-dividers-heading)
-         (win-width (window-max-chars-per-line nil face))
-         (suffix " ⎯⎯")
-         (dash-count (max 0 (- win-width 1
-                               (string-width title)
-                               (string-width suffix))))
-         (text (concat (make-string dash-count ?⎯) " " title suffix))
-         (ov (make-overlay beg end nil 'front-adavnce)))
+         (text (org-dividers-headline--format title face))
+         (ov (make-overlay beg end nil 'front-adavnce nil)))
     (overlay-put ov 'category 'org-dividers)
     (overlay-put ov 'face face)
     (overlay-put ov 'display text)
     (overlay-put ov 'evaporate t)
     (overlay-put ov 'isearch-open-invisible t)))
 
-(defcustom org-dividers-heading-regexp nil
-  "Match regexp for heading texts to be styled."
-  :group 'org-dividers
-  :type 'string)
-
-(defcustom org-dividers-heading-match nil
-  "Value for MATCH in `org-map-entries'.
-See the documentation for `org-map-entires' for what MATCH means."
-  :group 'org-dividers
-  :type 'string)
-
-(defun org-dividers-heading-draw (&optional beg end len)
-  "Apply styling to all headings with region.
-When given, BEG and END specify a region, and LEN is the length of content being
-removed. When not given, the region will be the entire buffer."
+(defun org-dividers-headline-draw (beg end len)
+  "Draw headline dividers in region.
+See `after-change-functions' for what BEG, END, and LEN means."
   (when (or (null len) (> len 0))
-    (setq beg (or beg (point-min))
-          end (or end (point-max)))
     (save-restriction
       (narrow-to-region beg end)
-      (org-dividers-heading-remove beg end len)
       (org-map-entries
        (lambda ()
          (when-let*
              ((el (org-element-at-point))
               (hl (and (eq (org-element-type el) 'headline) el))
               (title (org-element-property :title hl)))
-           (when (and org-dividers-heading-regexp
-                      (string-match org-dividers-heading-regexp title))
-             (org-dividers-heading--draw hl))))
-       org-dividers-heading-match))))
+           (when (and org-dividers-headline-regexp
+                      (string-match org-dividers-headline-regexp title))
+             (org-dividers-headline--draw hl))))
+       org-dividers-headline-match))))
 
-(defun org-dividers-heading-remove (&optional beg end len)
-  "Remove all styles from heading.
-When given, BEG and END specify a region, and LEN is the length of content being
-removed. When not given, the region will be the entire buffer."
-  (when (or (null len) (> len 0))
-    (setq beg (or beg (point-min))
-          end (or end (point-max)))
-    (remove-overlays beg end 'category 'org-dividers)))
+(defun org-dividers-headline-remove (beg end)
+  "Remove all headline dividers in region between BEG and END."
+  (remove-overlays beg end 'category 'org-dividers))
+
+(defun org-dividers-headline--redraw ()
+  "Redraw all headlines dividers."
+  (let ((beg (point-min)) (end (point-max)))
+    (org-dividers-headline-remove beg end)
+    (org-dividers-headline-draw beg end (- end beg))))
 
 ;;;###autoload
 (define-minor-mode org-dividers-mode
-  "A minor mode for styling Org headings and dividers."
+  "A minor mode for styling Org headlines as dividers."
   :group 'org-dividers
   :lighter "OrgD"
   (pcase org-dividers-mode
     ('t
-     (add-hook 'after-change-major-mode-hook #'org-dividers-heading-draw nil t)
-     (add-hook 'after-change-functions #'org-dividers-heading-draw nil t)
-     (add-hook 'window-configuration-change-hook #'org-dividers-heading-draw nil t))
+     (add-hook 'before-change-functions #'org-dividers-headline-remove nil t)
+     (add-hook 'after-change-functions #'org-dividers-headline-draw nil t)
+     (add-hook 'after-change-major-mode-hook #'org-dividers-headline--redraw nil t)
+     (add-hook 'window-configuration-change-hook #'org-dividers-headline--redraw nil t))
     (_
-     (org-dividers-heading-remove (point-min) (point-max))
-     (remove-hook 'after-change-major-mode-hook #'org-dividers-heading-draw t)
-     (remove-hook 'after-change-functions #'org-dividers-heading-draw t)
-     (remove-hook 'window-configuration-change-hook #'org-dividers-heading-draw t))))
+     (org-dividers-headline-remove (point-min) (point-max))
+     (remove-hook 'after-change-major-mode-hook #'org-dividers-headline--redraw t)
+     (remove-hook 'window-configuration-change-hook #'org-dividers-headline--redraw t)
+     (remove-hook 'after-change-functions #'org-dividers-headline-draw t)
+     (remove-hook 'before-change-functions #'org-dividers-headline-remove t))))
 
 (provide 'org-dividers)
 ;;; org-dividers.el ends here
