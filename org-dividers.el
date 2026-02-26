@@ -4,7 +4,7 @@
 ;;
 ;; Author: Taro Sato <okomestudio@gmail.com>
 ;; URL: https://github.com/okomestudio/org-dividers
-;; Version: 0.4.1
+;; Version: 0.4.2
 ;; Keywords: org
 ;; Package-Requires: ((emacs "30.1") (org "9.7"))
 ;;
@@ -79,6 +79,7 @@ See `after-change-functions' for what BEG, END, and LEN mean."
             (overlay-put ov 'category 'org-dividers-hr)
             (overlay-put ov 'display (append image `(:margin (,margin . 0))))
             (overlay-put ov 'evaporate t)
+            (overlay-put ov 'priority 90)
             nil))
         nil nil nil))))
 
@@ -218,7 +219,7 @@ See `after-change-functions' for what BEG, END, and LEN means."
      ;; (add-hook 'window-scroll-functions #'org-dividers-mode--on-window-scroll nil t)
      ;; (add-hook 'window-buffer-change-functions #'org-dividers-mode--on-window-buffer-change nil t)
      ;; (add-hook 'after-change-major-mode-hook #'org-dividers-headline--redraw nil t)
-     (org-dividers-mode--on-window-configuration-change))
+     )
     (_
      (let ((beg (point-min)) (end (point-max)))
        (org-dividers-horizontal-rules-remove beg end)
