@@ -4,7 +4,7 @@
 ;;
 ;; Author: Taro Sato <okomestudio@gmail.com>
 ;; URL: https://github.com/okomestudio/org-dividers
-;; Version: 0.3.1
+;; Version: 0.4.1
 ;; Keywords: org
 ;; Package-Requires: ((emacs "30.1") (org "9.7"))
 ;;
@@ -37,42 +37,50 @@
   :prefix "org-dividers-"
   :group 'org)
 
-;;; Dividers (WIP)
+;;; Dividers
 
 (defcustom org-dividers-horizontal-rules nil
-  "Cons of the form (image-file . scale)."
-  :type '(cons string number))
+  "Cons of the form (image-file . scale) or nil."
+  :group 'org-dividers
+  :type '(choice (const nil) (cons string number)))
 
-(defface org-dividers-horizontal-rule '((t :inherit default))
-  "Face used for horizontal rules.")
+(defvar org-dividers-horizontal-rules-before-style-hook nil
+  "Normal hook running before styling horizontal rules.")
 
-(defun org-dividers-horizontal-rules-apply-style ()
-  "Replace horizontal rules with an image using an overlay."
-  (interactive)
-  ;; TODO(2025-07-01): Compute the padding correctly.
-  (when (and (derived-mode-p 'org-mode) org-dividers-horizontal-rules)
-    (save-excursion
-      (goto-char (point-min))
-      (while (re-search-forward "^-\\{5,\\}$" nil t)
-        (let ((pt (point)))
-          (beginning-of-line)
-          (let* ((face 'org-dividers-horizontal-rule)
-                 (window-width (window-max-chars-per-line nil face))
-                 (image (create-image (car org-dividers-horizontal-rules)
-                                      nil
-                                      nil
+(defun org-dividers-horizontal-rules-remove (beg end)
+  "Remove horizontal rule overlays in region between BEG and END."
+  (remove-overlays beg end 'category 'org-dividers-hr))
+
+(defun org-dividers-horizontal-rules-style (beg end len)
+  "Style horizontal rule overlays with image.
+See `after-change-functions' for what BEG, END, and LEN mean."
+  (when (and (derived-mode-p 'org-mode)
+             org-dividers-horizontal-rules
+             (or (null len) (> len 0)))
+    (run-hooks 'org-dividers-horizontal-rules-before-style-hook)
+    (save-restriction
+      (narrow-to-region beg end)
+      (org-element-map (org-element-parse-buffer) 'horizontal-rule
+        (lambda (hr)
+          (let* ((hr-beg (org-element-property :begin hr))
+                 (hr-end (save-excursion
+                           (goto-char hr-beg) (line-end-position)))
+                 (win-width (- (window-width nil t)
+                               (if (bound-and-true-p org-indent-mode)
+                                   (* (or (org-current-level) 0)
+                                      org-indent-indentation-per-level
+                                      (default-font-width))
+                                 0)))
+                 (image (create-image (car org-dividers-horizontal-rules) nil nil
                                       :scale (cdr org-dividers-horizontal-rules)))
-                 (image-width (/ (car (image-size image t)) (frame-char-width)))
-                 (padding (max 0 (/ (- window-width image-width) 2)))
-                 (centered-text (concat (make-string padding ? ) " "))
-                 (ov (make-overlay (match-beginning 0) (match-end 0))))
-            (message "DEBUG: %d %d %d" window-width image-width padding)
-            (overlay-put ov 'category 'org-dividers)
-            (overlay-put ov 'face face)
-            (overlay-put ov 'before-string centered-text)
-            (overlay-put ov 'display image)
-            (overlay-put ov 'evaporate t))
-          (goto-char pt))))))
+                 (image-width (car (image-size image t)))
+                 (margin (- (/ win-width 2) (/ image-width 2)))
+                 (ov (make-overlay hr-beg hr-end nil 'front-adv nil)))
+            (overlay-put ov 'category 'org-dividers-hr)
+            (overlay-put ov 'display (append image `(:margin (,margin . 0))))
+            (overlay-put ov 'evaporate t)
+            nil))
+        nil nil nil))))
 
 ;;; Headlines
 
@@ -134,7 +142,7 @@ If negative, the position is from the right."
          (face 'org-dividers-headline)
          (title (org-element-property :title hl))
          (text (org-dividers-headline--format title face))
-         (ov (make-overlay beg end nil 'front-adavnce nil)))
+         (ov (make-overlay beg end nil 'front-adv nil)))
     (overlay-put ov 'category 'org-dividers)
     (overlay-put ov 'face face)
     (overlay-put ov 'display text)
@@ -162,11 +170,40 @@ See `after-change-functions' for what BEG, END, and LEN means."
   "Remove all headline dividers in region between BEG and END."
   (remove-overlays beg end 'category 'org-dividers))
 
-(defun org-dividers-headline--redraw ()
-  "Redraw all headlines dividers."
-  (let ((beg (point-min)) (end (point-max)))
+;;; Minor Mode Configuration
+
+(defun org-dividers-mode--on-before-change (beg end)
+  (org-dividers-horizontal-rules-remove beg end)
+  (org-dividers-headline-remove beg end))
+
+(defun org-dividers-mode--on-after-change (beg end len)
+  (org-dividers-horizontal-rules-style beg end len)
+  (org-dividers-headline-draw beg end len))
+
+(defun org-dividers-mode--on-window-scroll (win beg)
+  (let ((end (window-end win t))
+        (len nil))
+    (org-dividers-horizontal-rules-remove beg end)
+    (org-dividers-horizontal-rules-style beg end len)
     (org-dividers-headline-remove beg end)
-    (org-dividers-headline-draw beg end (- end beg))))
+    (org-dividers-headline-draw beg end len)))
+
+(defun org-dividers-mode--on-window-buffer-change (win)
+  (let ((beg (window-start win))
+        (end (window-end win t)))
+    (org-dividers-horizontal-rules-remove beg end)
+    (org-dividers-horizontal-rules-style beg end len)
+    (org-dividers-headline-remove beg end)
+    (org-dividers-headline-draw beg end len)))
+
+(defun org-dividers-mode--on-window-configuration-change ()
+  (when-let* ((win (selected-window))
+              (beg (window-start win))
+              (end (window-end win t)))
+    (org-dividers-horizontal-rules-remove beg end)
+    (org-dividers-horizontal-rules-style beg end nil)
+    (org-dividers-headline-remove beg end)
+    (org-dividers-headline-draw beg end nil)))
 
 ;;;###autoload
 (define-minor-mode org-dividers-mode
@@ -175,16 +212,23 @@ See `after-change-functions' for what BEG, END, and LEN means."
   :lighter "OrgD"
   (pcase org-dividers-mode
     ('t
-     (add-hook 'before-change-functions #'org-dividers-headline-remove nil t)
-     (add-hook 'after-change-functions #'org-dividers-headline-draw nil t)
-     (add-hook 'after-change-major-mode-hook #'org-dividers-headline--redraw nil t)
-     (add-hook 'window-configuration-change-hook #'org-dividers-headline--redraw nil t))
+     (add-hook 'before-change-functions #'org-dividers-mode--on-before-change nil t)
+     (add-hook 'after-change-functions #'org-dividers-mode--on-after-change nil t)
+     (add-hook 'window-configuration-change-hook #'org-dividers-mode--on-window-configuration-change nil t)
+     ;; (add-hook 'window-scroll-functions #'org-dividers-mode--on-window-scroll nil t)
+     ;; (add-hook 'window-buffer-change-functions #'org-dividers-mode--on-window-buffer-change nil t)
+     ;; (add-hook 'after-change-major-mode-hook #'org-dividers-headline--redraw nil t)
+     (org-dividers-mode--on-window-configuration-change))
     (_
-     (org-dividers-headline-remove (point-min) (point-max))
-     (remove-hook 'after-change-major-mode-hook #'org-dividers-headline--redraw t)
-     (remove-hook 'window-configuration-change-hook #'org-dividers-headline--redraw t)
-     (remove-hook 'after-change-functions #'org-dividers-headline-draw t)
-     (remove-hook 'before-change-functions #'org-dividers-headline-remove t))))
+     (let ((beg (point-min)) (end (point-max)))
+       (org-dividers-horizontal-rules-remove beg end)
+       (org-dividers-headline-remove beg end))
+     ;; (remove-hook 'after-change-major-mode-hook #'org-dividers-headline--redraw t)
+     ;; (remove-hook 'window-buffer-change-functions #'org-dividers-mode--on-window-buffer-change t)
+     ;; (remove-hook 'window-scroll-functions #'org-dividers-mode--on-window-scroll t)
+     (remove-hook 'window-configuration-change-hook #'org-dividers-mode--on-window-configuration-change t)
+     (remove-hook 'before-change-functions #'org-dividers-mode--on-before-change t)
+     (remove-hook 'after-change-functions #'org-dividers-mode--on-after-change t))))
 
 (provide 'org-dividers)
 ;;; org-dividers.el ends here
