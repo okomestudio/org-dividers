@@ -4,7 +4,7 @@
 ;;
 ;; Author: Taro Sato <okomestudio@gmail.com>
 ;; URL: https://github.com/okomestudio/org-dividers
-;; Version: 0.4.2
+;; Version: 0.4.3
 ;; Keywords: org
 ;; Package-Requires: ((emacs "30.1") (org "9.7"))
 ;;
@@ -56,32 +56,33 @@
 See `after-change-functions' for what BEG, END, and LEN mean."
   (when (and (derived-mode-p 'org-mode)
              org-dividers-horizontal-rules
-             (or (null len) (> len 0)))
+             (or (null len) (> (1- end) beg)))
     (run-hooks 'org-dividers-horizontal-rules-before-style-hook)
-    (save-restriction
-      (narrow-to-region beg end)
-      (org-element-map (org-element-parse-buffer) 'horizontal-rule
-        (lambda (hr)
-          (let* ((hr-beg (org-element-property :begin hr))
-                 (hr-end (save-excursion
-                           (goto-char hr-beg) (line-end-position)))
-                 (win-width (- (window-width nil t)
-                               (if (bound-and-true-p org-indent-mode)
-                                   (* (or (org-current-level) 0)
-                                      org-indent-indentation-per-level
-                                      (default-font-width))
-                                 0)))
-                 (image (create-image (car org-dividers-horizontal-rules) nil nil
-                                      :scale (cdr org-dividers-horizontal-rules)))
-                 (image-width (car (image-size image t)))
-                 (margin (- (/ win-width 2) (/ image-width 2)))
-                 (ov (make-overlay hr-beg hr-end nil 'front-adv nil)))
-            (overlay-put ov 'category 'org-dividers-hr)
-            (overlay-put ov 'display (append image `(:margin (,margin . 0))))
-            (overlay-put ov 'evaporate t)
-            (overlay-put ov 'priority 90)
-            nil))
-        nil nil nil))))
+    (save-excursion
+      (save-restriction
+        (narrow-to-region beg end)
+        (org-element-map (org-element-parse-buffer) 'horizontal-rule
+          (lambda (hr)
+            (let* ((hr-beg (org-element-property :begin hr))
+                   (hr-end (save-excursion
+                             (goto-char hr-beg) (line-end-position)))
+                   (win-width (- (window-width nil t)
+                                 (if (bound-and-true-p org-indent-mode)
+                                     (* (or (org-current-level) 0)
+                                        org-indent-indentation-per-level
+                                        (default-font-width))
+                                   0)))
+                   (image (create-image (car org-dividers-horizontal-rules) nil nil
+                                        :scale (cdr org-dividers-horizontal-rules)))
+                   (image-width (car (image-size image t)))
+                   (margin (- (/ win-width 2) (/ image-width 2)))
+                   (ov (make-overlay hr-beg hr-end nil 'front-adv nil)))
+              (overlay-put ov 'category 'org-dividers-hr)
+              (overlay-put ov 'display (append image `(:margin (,margin . 0))))
+              (overlay-put ov 'evaporate t)
+              (overlay-put ov 'priority 90)
+              nil))
+          nil nil nil)))))
 
 ;;; Headlines
 
@@ -153,19 +154,20 @@ If negative, the position is from the right."
 (defun org-dividers-headline-draw (beg end len)
   "Draw headline dividers in region.
 See `after-change-functions' for what BEG, END, and LEN means."
-  (when (or (null len) (> len 0))
-    (save-restriction
-      (narrow-to-region beg end)
-      (org-map-entries
-       (lambda ()
-         (when-let*
-             ((el (org-element-at-point))
-              (hl (and (eq (org-element-type el) 'headline) el))
-              (title (org-element-property :title hl)))
-           (when (and org-dividers-headline-regexp
-                      (string-match org-dividers-headline-regexp title))
-             (org-dividers-headline--draw hl))))
-       org-dividers-headline-match))))
+  (when (or (null len) (> (1- end) beg))
+    (save-excursion
+      (save-restriction
+        (narrow-to-region beg end)
+        (org-map-entries
+         (lambda ()
+           (when-let*
+               ((el (org-element-at-point))
+                (hl (and (eq (org-element-type el) 'headline) el))
+                (title (org-element-property :title hl)))
+             (when (and org-dividers-headline-regexp
+                        (string-match org-dividers-headline-regexp title))
+               (org-dividers-headline--draw hl))))
+         org-dividers-headline-match)))))
 
 (defun org-dividers-headline-remove (beg end)
   "Remove all headline dividers in region between BEG and END."
