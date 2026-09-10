@@ -4,7 +4,7 @@
 ;;
 ;; Author: Taro Sato <okomestudio@gmail.com>
 ;; URL: https://github.com/okomestudio/org-dividers
-;; Version: 0.6.1
+;; Version: 0.6.2
 ;; Keywords: org
 ;; Package-Requires: ((emacs "31.1") (org "9.7"))
 ;;
@@ -196,7 +196,7 @@ See `after-change-functions' for what BEG, END, and LEN means."
         (setq beg (line-beginning-position))
         (goto-char end)
         (setq end (line-end-position))
-        (org-dividers-hl-remove beg end)
+        (org-dividers-hl--remove-all beg end)
 
         (narrow-to-region beg end)
         (dolist (win (get-buffer-window-list (current-buffer) nil t))
