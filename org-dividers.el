@@ -145,29 +145,34 @@ For the meaning of BEG, END, and LEN, see `after-change-functions'."
 
 (defun org-dividers-hl--format (win text face)
   "Format headline  given headline TEXT and FACE in window WIN."
-  (let* ((win (or win
-                  (get-buffer-window (current-buffer) t)
-                  (selected-window)))
-         (gutter-width (if (bound-and-true-p display-line-numbers-mode)
-                           (or (line-number-display-width t) 0)
-                         0))
-         (total-width (max 0 (- (window-max-chars-per-line win face) gutter-width)))
-         (dash-count (max 0 (- total-width
-                               (* 2 org-dividers-hl-padding-outer)
-                               (* 2 org-dividers-hl-padding-inner)
-                               (string-width text))))
-         (pos org-dividers-hl-text-position)
-         (dash-left (max 0 (if (> pos 0) pos (+ dash-count pos))))
-         (dash-right (max 0 (if (> pos 0) (- dash-count pos) (abs pos)))))
-    (propertize
-     (concat (make-string org-dividers-hl-padding-outer ?\s)
-             (make-string dash-left org-dividers-hl-char)
-             (make-string org-dividers-hl-padding-inner ?\s)
-             text
-             (make-string org-dividers-hl-padding-inner ?\s)
-             (make-string dash-right org-dividers-hl-char)
-             (make-string org-dividers-hl-padding-outer ?\s))
-     'face face)))
+  (let ((win (or win
+                 (get-buffer-window (current-buffer) t)
+                 (selected-window))))
+    (with-selected-window win
+      (let* ((level-1 (max 0 (1- (or (org-current-level) 1))))
+             (indent-width (if (bound-and-true-p org-indent-mode)
+                               (* level-1 org-indent-indentation-per-level)
+                             0))
+             (total-width (max 0 (- (window-max-chars-per-line win face)
+                                    level-1
+                                    indent-width)))
+             (dash-count (max 0 (- total-width
+                                   (* 2 org-dividers-hl-padding-outer)
+                                   (* 2 org-dividers-hl-padding-inner)
+                                   (string-width text))))
+             (pos org-dividers-hl-text-position)
+             (dash-left (max 0 (if (> pos 0) pos (+ dash-count pos))))
+             (dash-right (max 0 (if (> pos 0) (- dash-count pos) (abs pos)))))
+        (propertize
+         (concat (make-string level-1 ?\s)
+                 (make-string org-dividers-hl-padding-outer ?\s)
+                 (make-string dash-left org-dividers-hl-char)
+                 (make-string org-dividers-hl-padding-inner ?\s)
+                 text
+                 (make-string org-dividers-hl-padding-inner ?\s)
+                 (make-string dash-right org-dividers-hl-char)
+                 (make-string org-dividers-hl-padding-outer ?\s))
+         'face face)))))
 
 (defun org-dividers-hl--draw (win hl)
   "Draw headline element HL as overlay in window WIN."
