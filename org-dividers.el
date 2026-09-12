@@ -4,7 +4,7 @@
 ;;
 ;; Author: Taro Sato <okomestudio@gmail.com>
 ;; URL: https://github.com/okomestudio/org-dividers
-;; Version: 0.6.2
+;; Version: 0.6.3
 ;; Keywords: org
 ;; Package-Requires: ((emacs "31.1") (org "9.7"))
 ;;
@@ -90,60 +90,82 @@ If negative, the position is from the right."
 
 ;;; Horizontal Rules
 
-(defun org-dividers-hr--remove-all (beg end)
-  "Remove horizontal rule overlays in region from BEG to END."
-  (remove-overlays beg end 'category 'org-dividers-hr))
+(defun org-dividers-hr--display (hr-len)
+  (when-let* ((hr-sub (or (alist-get hr-len org-dividers-hr-styles)
+                          (alist-get t org-dividers-hr-styles)))
+              (im-file (let ((f (car hr-sub)))
+                         (or (and (file-exists-p f) f)
+                             (let ((f (file-name-concat org-dividers--dir "images" f)))
+                               (and (file-exists-p f) f)))))
+              (im-scale (cdr hr-sub))
+	      (level-1 (1- (or (org-current-level) 1)))
+              (win-width (- (window-body-width nil t)
+                            (if (bound-and-true-p org-indent-mode)
+                                (* level-1
+                                   (window-font-width nil) ; default-font-width (?)
+                                   org-indent-indentation-per-level)
+                              0)))
+              (image (create-image im-file nil nil :scale im-scale))
+              (margin (round (/ (- win-width (car (image-size image t))) 2))))
+    (append image `(:margin (,margin . 0)))))
 
-(defun org-dividers-hr--remove (ov after-p _beg _end &optional _len)
-  "Remove overlay OV when AFTER-P is non-nil."
-  (unless after-p
-    (delete-overlay ov)))
+(defun org-dividers-hr--on-modification (ov after-p beg end &optional len)
+  (when after-p
+    (let* ((l-beg (save-excursion (goto-char beg) (line-beginning-position)))
+           (l-end (save-excursion (goto-char end) (line-end-position)))
+           (l-len (length (string-trim (buffer-substring-no-properties l-beg l-end)))))
+      (if (< l-len 5)
+          (delete-overlay ov)
+        (when-let* ((display (org-dividers-hr--display l-len)))
+          (overlay-put ov 'display display))))))
 
-(defun org-dividers-hr--redraw (beg end len)
+(defun org-dividers-hr--redraw (beg end &optional len)
   "Redraw horizontal rules within a region from BEG to END.
 For the meaning of BEG, END, and LEN, see `after-change-functions'."
+  (when (and len (> len 0))
+    (dolist (ov (overlays-in beg (+ end len)))
+      (when (and (eq (overlay-get ov 'category) 'org-dividers-hr-ov)
+                 (< (- (overlay-end ov) (overlay-start ov) 5)))
+        (delete-overlay ov))))
   (save-excursion
     (save-restriction
       (widen)
-      (let ((l-beg (save-excursion (goto-char beg) (line-beginning-position)))
-            (l-end (save-excursion (goto-char end) (line-end-position))))
-        (org-dividers-hr--remove-all l-beg l-end)
-        (narrow-to-region l-beg l-end)
+      (let ((r-beg (save-excursion (goto-char beg) (line-beginning-position)))
+            (r-end (save-excursion (goto-char end) (line-end-position))))
+        (narrow-to-region r-beg r-end)
+        (goto-char (point-min))
         (org-element-map (org-element-parse-buffer) 'horizontal-rule
-          (lambda (hr)
+          (lambda (el)
             (when-let*
-                ((hr-beg (org-element-property :begin hr))
+                ((hr-beg (org-element-property :begin el))
                  (hr-end (save-excursion (goto-char hr-beg) (line-end-position)))
                  (hr-len (length (string-trim (buffer-substring-no-properties hr-beg hr-end))))
-                 (hr-sub (or (alist-get hr-len org-dividers-hr-styles)
-                             (alist-get t org-dividers-hr-styles)))
-                 (im-file (let ((f (car hr-sub)))
-                            (or (and (file-exists-p f) f)
-                                (let ((f (file-name-concat org-dividers--dir "images" f)))
-                                  (and (file-exists-p f) f)))))
-                 (im-scale (cdr hr-sub)))
-              (let* ((win-width (- (window-width nil t)
-                                   (if (bound-and-true-p org-indent-mode)
-                                       (* (or (org-current-level) 0)
-                                          org-indent-indentation-per-level
-                                          (default-font-width))
-                                     0)))
-                     (image (create-image im-file nil nil :scale im-scale))
-                     (margin (- (/ win-width 2) (/ (car (image-size image t)) 2)))
-                     (ov (make-overlay hr-beg hr-end nil 'front-adv nil)))
-                (overlay-put ov 'category 'org-dividers-hr)
-                (overlay-put ov 'display (append image `(:margin (,margin . 0))))
-                (overlay-put ov 'evaporate t)
-                (overlay-put ov 'modification-hooks '(org-dividers-hr--remove))
-                (overlay-put ov 'insert-in-front-hooks '(org-dividers-hr--remove))
-                (overlay-put ov 'insert-behind-hooks '(org-dividers-hr--remove))
-                (overlay-put ov 'priority 90)
-                nil)))
+                 (display (when (> hr-len 4)
+                            (org-dividers-hr--display hr-len))))
+              (if-let* ((ov (seq-find
+                             (lambda (ov)
+                               (when (and (eq (overlay-get ov 'category) 'org-dividers-hl-ov)
+                                          (eq (overlay-start ov) hr-beg)
+                                          (eq (overlay-end ov) hr-end))
+                                 ov))
+                             (overlays-in hr-beg hr-end))))
+                  (overlay-put ov 'display display)
+                (when-let* ((ov (make-overlay hr-beg hr-end nil t t)))
+                  (overlay-put ov 'category 'org-dividers-hr-ov)
+                  (overlay-put ov 'priority -100)
+                  (overlay-put ov 'display display)
+                  (overlay-put ov 'modification-hooks '(org-dividers-hr--on-modification))
+                  (overlay-put ov 'insert-in-front-hooks '(org-dividers-hr--on-modification))
+                  (overlay-put ov 'insert-behind-hooks '(org-dividers-hr--on-modification))))))
           nil nil nil)))))
+
+(defun org-dividers-hr--remove-all (beg end)
+  "Remove horizontal rule overlays in region from BEG to END."
+  (remove-overlays beg end 'category 'org-dividers-hr-ov))
 
 ;;; Headlines
 
-(defun org-dividers-hl--format (win text face)
+(defun org-dividers-hl--display (win text face)
   "Format headline  given headline TEXT and FACE in window WIN."
   (let ((win (or win
                  (get-buffer-window (current-buffer) t)
@@ -174,48 +196,60 @@ For the meaning of BEG, END, and LEN, see `after-change-functions'."
                  (make-string org-dividers-hl-padding-outer ?\s))
          'face face)))))
 
-(defun org-dividers-hl--draw (win hl)
+(defun org-dividers-hl--create (win beg end title)
   "Draw headline element HL as overlay in window WIN."
-  (let* ((beg (org-element-property :begin hl))
-         (end (save-excursion (goto-char beg) (line-end-position)))
-         (title (org-element-property :title hl))
-         (text (org-dividers-hl--format win title 'org-dividers-hl))
-         (ov (make-overlay beg end nil 'front-adv nil)))
-    (overlay-put ov 'category 'org-dividers-hl)
+  (let* ((display (org-dividers-hl--display win title 'org-dividers-hl))
+         (ov (make-overlay beg end nil nil t)))
+    (overlay-put ov 'category 'org-dividers-hl-ov)
     (overlay-put ov 'window win)
-    (overlay-put ov 'display text)
-    (overlay-put ov 'evaporate t)
-    (overlay-put ov 'isearch-open-invisible t)))
+    (overlay-put ov 'priority -100)
+    (overlay-put ov 'display display)
+    (overlay-put ov 'title title)
+    (overlay-put ov 'isearch-open-invisible t)
+    ov))
 
-(defun org-dividers-hl--remove-all (beg end)
-  "Remove all headline overlays in region from BEG to END."
-  (remove-overlays beg end 'category 'org-dividers-hl))
-
-(defun org-dividers-hl--redraw (beg end len)
+(defun org-dividers-hl--redraw (beg end &optional len)
   "Redraw headlines in region from BEG to END.
 See `after-change-functions' for what BEG, END, and LEN means."
-  (when (or (null len) (> (1- end) beg))
-    (save-excursion
-      (save-restriction
-        (goto-char beg)
-        (setq beg (line-beginning-position))
-        (goto-char end)
-        (setq end (line-end-position))
-        (org-dividers-hl--remove-all beg end)
-
-        (narrow-to-region beg end)
+  (when (and len (> len 0))
+    (dolist (ov (overlays-in beg (+ end len)))
+      (when (and (eq (overlay-get ov 'category) 'org-dividers-hl-ov)
+                 (= (overlay-start ov) (overlay-end ov)))
+        (delete-overlay ov))))
+  (save-excursion
+    (save-restriction
+      (widen)
+      (let ((r-beg (save-excursion (goto-char beg) (line-beginning-position)))
+            (r-end (save-excursion (goto-char end) (line-end-position))))
+        (narrow-to-region r-beg r-end)
         (dolist (win (get-buffer-window-list (current-buffer) nil t))
           (goto-char (point-min))
           (org-map-entries
            (lambda ()
-             (when-let*
-                 ((el (org-element-at-point))
-                  (_ (and (eq (org-element-type el) 'headline)
-                          org-dividers-hl-title
-                          (string-match-p org-dividers-hl-title
-                                          (org-element-property :title el)))))
-               (org-dividers-hl--draw win el)))
+             (let* ((el (org-element-at-point))
+                    (title (org-element-property :title el))
+                    (beg (org-element-property :begin el))
+                    (end (save-excursion (goto-char beg) (line-end-position))))
+               (if-let* ((ov (seq-find
+                              (lambda (ov)
+                                (when (and (eq (overlay-get ov 'category) 'org-dividers-hl-ov)
+                                           (eq (overlay-start ov) beg)
+                                           (eq (overlay-end ov) end))
+                                  ov))
+                              (overlays-in beg end))))
+                   (if (and org-dividers-hl-title
+                            (string-match-p org-dividers-hl-title title))
+                       (unless (string= title (overlay-get ov 'title))
+                         (overlay-put ov 'display (org-dividers-hl--display win title 'org-dividers-hl)))
+                     (delete-overlay ov))
+                 (when (and org-dividers-hl-title
+                            (string-match-p org-dividers-hl-title title))
+                   (org-dividers-hl--create win beg end title)))))
            org-dividers-hl-match))))))
+
+(defun org-dividers-hl--remove-all (beg end)
+  "Remove all headline overlays in region from BEG to END."
+  (remove-overlays beg end 'category 'org-dividers-hl-ov))
 
 ;;; Minor Mode
 
@@ -240,6 +274,12 @@ See `after-change-functions' for what BEG, END, and LEN means."
      (remove-hook 'after-change-functions #'org-dividers-mode--on-after-change t))))
 
 (defun org-dividers-mode--on-after-change (beg end len)
+  "A hook function for `after-change-functions'.
+On insertion, LEN is 0. BEG is at the first char and END is after the end
+of last char of inserted text.
+
+On deletion, LEN is the character count of deleted text. Both BEG and
+END are at the first char of deleted text."
   (org-dividers-hr--redraw beg end len)
   (org-dividers-hl--redraw beg end len))
 
