@@ -4,7 +4,7 @@
 ;;
 ;; Author: Taro Sato <okomestudio@gmail.com>
 ;; URL: https://github.com/okomestudio/org-dividers
-;; Version: 0.6.3
+;; Version: 0.6.4
 ;; Keywords: org
 ;; Package-Requires: ((emacs "31.1") (org "9.7"))
 ;;
@@ -165,46 +165,54 @@ For the meaning of BEG, END, and LEN, see `after-change-functions'."
 
 ;;; Headlines
 
-(defun org-dividers-hl--display (win text face)
-  "Format headline  given headline TEXT and FACE in window WIN."
-  (let ((win (or win
-                 (get-buffer-window (current-buffer) t)
-                 (selected-window))))
-    (with-selected-window win
-      (let* ((level-1 (max 0 (1- (or (org-current-level) 1))))
-             (indent-width (if (bound-and-true-p org-indent-mode)
-                               (* level-1 org-indent-indentation-per-level)
-                             0))
-             (total-width (max 0 (- (window-max-chars-per-line win face)
-                                    level-1
-                                    indent-width)))
-             (dash-count (max 0 (- total-width
-                                   (* 2 org-dividers-hl-padding-outer)
-                                   (* 2 org-dividers-hl-padding-inner)
-                                   (string-width text))))
-             (pos org-dividers-hl-text-position)
-             (dash-left (max 0 (if (> pos 0) pos (+ dash-count pos))))
-             (dash-right (max 0 (if (> pos 0) (- dash-count pos) (abs pos)))))
-        (propertize
-         (concat (make-string level-1 ?\s)
-                 (make-string org-dividers-hl-padding-outer ?\s)
-                 (make-string dash-left org-dividers-hl-char)
-                 (make-string org-dividers-hl-padding-inner ?\s)
-                 text
-                 (make-string org-dividers-hl-padding-inner ?\s)
-                 (make-string dash-right org-dividers-hl-char)
-                 (make-string org-dividers-hl-padding-outer ?\s))
-         'face face)))))
+(defun org-dividers-hl--total-width (win face)
+  "Compute the total character width of line at point given FACE in WIN."
+  (let* ((level-1 (1- (or (org-current-level) 1)))
+         (indent-width (if (bound-and-true-p org-indent-mode)
+                           (* level-1 org-indent-indentation-per-level)
+                         0)))
+    (max 0 (- (window-max-chars-per-line win face)
+              level-1
+              indent-width))))
+
+(defun org-dividers-hl--update (ov win title)
+  "Update the display of overlay OV with headline TITLE in window WIN.
+Update is not performed when no change is detected in display property."
+  (let* ((face 'org-dividers-hl)
+         (total-width (org-dividers-hl--total-width win face)))
+    (unless (and (string= title (overlay-get ov 'title))
+                 (= (length (substring-no-properties (or (overlay-get ov 'display) "")))
+                    total-width))
+      (let ((display
+             (with-selected-window win
+               (let* ((dash-count (max 0 (- total-width
+                                            (* 2 org-dividers-hl-padding-outer)
+                                            (* 2 org-dividers-hl-padding-inner)
+                                            (string-width title))))
+                      (pos org-dividers-hl-text-position)
+                      (dash-left (max 0 (if (> pos 0) pos (+ dash-count pos))))
+                      (dash-right (max 0 (if (> pos 0) (- dash-count pos) (abs pos)))))
+                 (propertize
+                  (concat (make-string (1- (or (org-current-level) 1)) ?\s)
+                          (make-string org-dividers-hl-padding-outer ?\s)
+                          (make-string dash-left org-dividers-hl-char)
+                          (make-string org-dividers-hl-padding-inner ?\s)
+                          title
+                          (make-string org-dividers-hl-padding-inner ?\s)
+                          (make-string dash-right org-dividers-hl-char)
+                          (make-string org-dividers-hl-padding-outer ?\s))
+                  'face face)))))
+        (overlay-put ov 'display display)
+        (overlay-put ov 'title title))))
+  ov)
 
 (defun org-dividers-hl--create (win beg end title)
-  "Draw headline element HL as overlay in window WIN."
-  (let* ((display (org-dividers-hl--display win title 'org-dividers-hl))
-         (ov (make-overlay beg end nil nil t)))
+  "Create a TITLE overlay for headline spanning BEG to END in window WIN."
+  (let ((ov (make-overlay beg end nil nil t)))
     (overlay-put ov 'category 'org-dividers-hl-ov)
     (overlay-put ov 'window win)
     (overlay-put ov 'priority -100)
-    (overlay-put ov 'display display)
-    (overlay-put ov 'title title)
+    (org-dividers-hl--update ov win title)
     (overlay-put ov 'isearch-open-invisible t)
     ov))
 
@@ -212,10 +220,12 @@ For the meaning of BEG, END, and LEN, see `after-change-functions'."
   "Redraw headlines in region from BEG to END.
 See `after-change-functions' for what BEG, END, and LEN means."
   (when (and len (> len 0))
-    (dolist (ov (overlays-in beg (+ end len)))
-      (when (and (eq (overlay-get ov 'category) 'org-dividers-hl-ov)
-                 (= (overlay-start ov) (overlay-end ov)))
-        (delete-overlay ov))))
+    (dolist (win (get-buffer-window-list (current-buffer) nil t))
+      (dolist (ov (overlays-in beg (+ end len)))
+        (when (and (eq (overlay-get ov 'window) win)
+                   (eq (overlay-get ov 'category) 'org-dividers-hl-ov)
+                   (= (overlay-start ov) (overlay-end ov)))
+          (delete-overlay ov)))))
   (save-excursion
     (save-restriction
       (widen)
@@ -232,18 +242,16 @@ See `after-change-functions' for what BEG, END, and LEN means."
                     (end (save-excursion (goto-char beg) (line-end-position))))
                (if-let* ((ov (seq-find
                               (lambda (ov)
-                                (when (and (eq (overlay-get ov 'category) 'org-dividers-hl-ov)
+                                (when (and (eq (overlay-get ov 'window) win)
+                                           (eq (overlay-get ov 'category) 'org-dividers-hl-ov)
                                            (eq (overlay-start ov) beg)
                                            (eq (overlay-end ov) end))
                                   ov))
                               (overlays-in beg end))))
-                   (if (and org-dividers-hl-title
-                            (string-match-p org-dividers-hl-title title))
-                       (unless (string= title (overlay-get ov 'title))
-                         (overlay-put ov 'display (org-dividers-hl--display win title 'org-dividers-hl)))
+                   (if (and org-dividers-hl-title (string-match-p org-dividers-hl-title title))
+                       (org-dividers-hl--update ov win title)
                      (delete-overlay ov))
-                 (when (and org-dividers-hl-title
-                            (string-match-p org-dividers-hl-title title))
+                 (when (and org-dividers-hl-title (string-match-p org-dividers-hl-title title))
                    (org-dividers-hl--create win beg end title)))))
            org-dividers-hl-match))))))
 
