@@ -4,7 +4,7 @@
 ;;
 ;; Author: Taro Sato <okomestudio@gmail.com>
 ;; URL: https://github.com/okomestudio/org-dividers
-;; Version: 0.6.4
+;; Version: 0.6.5
 ;; Keywords: org
 ;; Package-Requires: ((emacs "31.1") (org "9.7"))
 ;;
@@ -208,7 +208,7 @@ Update is not performed when no change is detected in display property."
 
 (defun org-dividers-hl--create (win beg end title)
   "Create a TITLE overlay for headline spanning BEG to END in window WIN."
-  (let ((ov (make-overlay beg end nil nil t)))
+  (let ((ov (make-overlay beg end nil nil nil)))
     (overlay-put ov 'category 'org-dividers-hl-ov)
     (overlay-put ov 'window win)
     (overlay-put ov 'priority -100)
