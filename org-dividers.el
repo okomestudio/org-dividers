@@ -4,7 +4,7 @@
 ;;
 ;; Author: Taro Sato <okomestudio@gmail.com>
 ;; URL: https://github.com/okomestudio/org-dividers
-;; Version: 0.6.5
+;; Version: 0.6.6
 ;; Keywords: org
 ;; Package-Requires: ((emacs "31.1") (org "9.7"))
 ;;
@@ -270,6 +270,7 @@ See `after-change-functions' for what BEG, END, and LEN means."
     ('t
      (when (boundp 'org-modern-horizontal-rule)
        (setq-local org-modern-horizontal-rule nil))
+     (jit-lock-register #'org-dividers-mode--on-after-change)
      (add-hook 'after-change-functions #'org-dividers-mode--on-after-change nil t)
      (add-hook 'window-configuration-change-hook
                #'org-dividers-mode--on-window-configuration-change nil t))
@@ -279,9 +280,10 @@ See `after-change-functions' for what BEG, END, and LEN means."
        (org-dividers-hl--remove-all beg end))
      (remove-hook 'window-configuration-change-hook
                   #'org-dividers-mode--on-window-configuration-change t)
-     (remove-hook 'after-change-functions #'org-dividers-mode--on-after-change t))))
+     (remove-hook 'after-change-functions #'org-dividers-mode--on-after-change t)
+     (jit-lock-unregister #'org-dividers-mode--on-after-change))))
 
-(defun org-dividers-mode--on-after-change (beg end len)
+(defun org-dividers-mode--on-after-change (beg end &optional len)
   "A hook function for `after-change-functions'.
 On insertion, LEN is 0. BEG is at the first char and END is after the end
 of last char of inserted text.
