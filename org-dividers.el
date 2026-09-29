@@ -4,7 +4,7 @@
 ;;
 ;; Author: Taro Sato <okomestudio@gmail.com>
 ;; URL: https://github.com/okomestudio/org-dividers
-;; Version: 0.6.6
+;; Version: 0.7.1
 ;; Keywords: org
 ;; Package-Requires: ((emacs "31.1") (org "9.7"))
 ;;
@@ -144,7 +144,7 @@ For the meaning of BEG, END, and LEN, see `after-change-functions'."
                             (org-dividers-hr--display hr-len))))
               (if-let* ((ov (seq-find
                              (lambda (ov)
-                               (when (and (eq (overlay-get ov 'category) 'org-dividers-hl-ov)
+                               (when (and (eq (overlay-get ov 'category) 'org-dividers-hr-ov)
                                           (eq (overlay-start ov) hr-beg)
                                           (eq (overlay-end ov) hr-end))
                                  ov))
@@ -219,6 +219,7 @@ Update is not performed when no change is detected in display property."
 (defun org-dividers-hl--redraw (beg end &optional len)
   "Redraw headlines in region from BEG to END.
 See `after-change-functions' for what BEG, END, and LEN means."
+  ;; (remove-overlays beg end 'category 'org-dividers-hl-ov)
   (when (and len (> len 0))
     (dolist (win (get-buffer-window-list (current-buffer) nil t))
       (dolist (ov (overlays-in beg (+ end len)))
@@ -270,8 +271,7 @@ See `after-change-functions' for what BEG, END, and LEN means."
     ('t
      (when (boundp 'org-modern-horizontal-rule)
        (setq-local org-modern-horizontal-rule nil))
-     (jit-lock-register #'org-dividers-mode--on-after-change)
-     (add-hook 'after-change-functions #'org-dividers-mode--on-after-change nil t)
+     (jit-lock-register #'org-dividers-mode--jit-lock)
      (add-hook 'window-configuration-change-hook
                #'org-dividers-mode--on-window-configuration-change nil t))
     (_
@@ -280,25 +280,19 @@ See `after-change-functions' for what BEG, END, and LEN means."
        (org-dividers-hl--remove-all beg end))
      (remove-hook 'window-configuration-change-hook
                   #'org-dividers-mode--on-window-configuration-change t)
-     (remove-hook 'after-change-functions #'org-dividers-mode--on-after-change t)
-     (jit-lock-unregister #'org-dividers-mode--on-after-change))))
+     (jit-lock-unregister #'org-dividers-mode--jit-lock))))
 
-(defun org-dividers-mode--on-after-change (beg end &optional len)
-  "A hook function for `after-change-functions'.
-On insertion, LEN is 0. BEG is at the first char and END is after the end
-of last char of inserted text.
-
-On deletion, LEN is the character count of deleted text. Both BEG and
-END are at the first char of deleted text."
-  (org-dividers-hr--redraw beg end len)
-  (org-dividers-hl--redraw beg end len))
+(defun org-dividers-mode--jit-lock (beg end)
+  "Run JIT lock fontification from BEG to END."
+  (save-match-data
+    (org-dividers-hr--redraw beg end)
+    (org-dividers-hl--redraw beg end)))
 
 (defun org-dividers-mode--on-window-configuration-change ()
   (when-let* ((win (selected-window))
               (beg (window-start win))
               (end (window-end win t)))
-    (org-dividers-hr--redraw beg end nil)
-    (org-dividers-hl--redraw beg end nil)))
+    (org-dividers-mode--jit-lock beg end)))
 
 (provide 'org-dividers)
 ;;; org-dividers.el ends here
