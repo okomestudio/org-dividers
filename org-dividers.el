@@ -4,7 +4,7 @@
 ;;
 ;; Author: Taro Sato <okomestudio@gmail.com>
 ;; URL: https://github.com/okomestudio/org-dividers
-;; Version: 0.7.1
+;; Version: 0.7.2
 ;; Keywords: org
 ;; Package-Requires: ((emacs "31.1") (org "9.7"))
 ;;
@@ -213,6 +213,10 @@ Update is not performed when no change is detected in display property."
     (overlay-put ov 'window win)
     (overlay-put ov 'priority -100)
     (org-dividers-hl--update ov win title)
+    (overlay-put ov 'modification-hooks
+                 (list (lambda (ov opened-after-p _beg _end &optional _len)
+                         (when opened-after-p
+                           (delete-overlay ov)))))
     (overlay-put ov 'isearch-open-invisible t)
     ov))
 
