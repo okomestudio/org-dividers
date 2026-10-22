@@ -4,7 +4,7 @@
 ;;
 ;; Author: Taro Sato <okomestudio@gmail.com>
 ;; URL: https://github.com/okomestudio/org-dividers
-;; Version: 0.7.2
+;; Version: 0.7.3
 ;; Keywords: org
 ;; Package-Requires: ((emacs "31.1") (org "9.7"))
 ;;
@@ -49,7 +49,7 @@ documentation for `org-map-entires' for what MATCH means."
   :type 'string
   :group 'org-dividers)
 
-(defcustom org-dividers-hl-padding-outer 1
+(defcustom org-dividers-hl-padding-outer 0
   "Outer padding for headline."
   :type 'integer
   :group 'org-dividers)
@@ -208,7 +208,7 @@ Update is not performed when no change is detected in display property."
 
 (defun org-dividers-hl--create (win beg end title)
   "Create a TITLE overlay for headline spanning BEG to END in window WIN."
-  (let ((ov (make-overlay beg end nil nil nil)))
+  (let ((ov (make-overlay beg end nil t nil)))
     (overlay-put ov 'category 'org-dividers-hl-ov)
     (overlay-put ov 'window win)
     (overlay-put ov 'priority -100)
