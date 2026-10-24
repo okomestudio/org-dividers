@@ -4,7 +4,7 @@
 ;;
 ;; Author: Taro Sato <okomestudio@gmail.com>
 ;; URL: https://github.com/okomestudio/org-dividers
-;; Version: 0.7.4
+;; Version: 0.7.5
 ;; Keywords: org
 ;; Package-Requires: ((emacs "31.1") (org "9.7"))
 ;;
@@ -40,7 +40,9 @@
 (defcustom org-dividers-hl-match nil
   "Org elements match for filtering by `org-map-entries'.
 Only headlines matches by this specification will be styled. See the
-documentation for `org-map-entires' for what MATCH means."
+documentation for `org-map-entires' for what MATCH means. Note that when
+this is set nil, the match won't be performed. To filter for all
+headlines, use non-nil (e.g., t)."
   :type 'string
   :group 'org-dividers)
 
@@ -230,29 +232,30 @@ See `after-change-functions' for what BEG, END, and LEN means."
                    (eq (overlay-get ov 'category) 'org-dividers-hl-ov)
                    (= (overlay-start ov) (overlay-end ov)))
           (delete-overlay ov)))))
-  (save-excursion
-    (save-restriction
-      (widen)
-      (let ((r-beg (save-excursion (goto-char beg) (line-beginning-position)))
-            (r-end (save-excursion (goto-char end) (line-end-position))))
-        (narrow-to-region r-beg r-end)
-        (dolist (win (get-buffer-window-list (current-buffer) nil t))
-          (goto-char (point-min))
-          (org-map-entries
-           (lambda ()
-             (let* ((elmt (org-element-at-point))
-                    (beg (org-element-property :begin elmt))
-                    (end (save-excursion (goto-char beg) (line-end-position))))
-               (if-let* ((ov (seq-find
-                              (lambda (ov)
-                                (when (and (eq (overlay-get ov 'window) win)
-                                           (eq (overlay-get ov 'category) 'org-dividers-hl-ov))
-                                  ov))
-                              (overlays-in beg end))))
-                   (unless (overlay-get ov 'saved-display)
-                     (org-dividers-hl--update ov elmt))
-                 (org-dividers-hl--create win elmt))))
-           org-dividers-hl-match))))))
+  (when org-dividers-hl-match
+    (save-excursion
+      (save-restriction
+        (widen)
+        (let ((r-beg (save-excursion (goto-char beg) (line-beginning-position)))
+              (r-end (save-excursion (goto-char end) (line-end-position))))
+          (narrow-to-region r-beg r-end)
+          (dolist (win (get-buffer-window-list (current-buffer) nil t))
+            (goto-char (point-min))
+            (org-map-entries
+             (lambda ()
+               (let* ((elmt (org-element-at-point))
+                      (beg (org-element-property :begin elmt))
+                      (end (save-excursion (goto-char beg) (line-end-position))))
+                 (if-let* ((ov (seq-find
+                                (lambda (ov)
+                                  (when (and (eq (overlay-get ov 'window) win)
+                                             (eq (overlay-get ov 'category) 'org-dividers-hl-ov))
+                                    ov))
+                                (overlays-in beg end))))
+                     (unless (overlay-get ov 'saved-display)
+                       (org-dividers-hl--update ov elmt))
+                   (org-dividers-hl--create win elmt))))
+             org-dividers-hl-match)))))))
 
 (defun org-dividers-hl--remove-all (beg end)
   "Remove all headline overlays in region from BEG to END."
