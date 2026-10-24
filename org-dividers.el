@@ -4,7 +4,7 @@
 ;;
 ;; Author: Taro Sato <okomestudio@gmail.com>
 ;; URL: https://github.com/okomestudio/org-dividers
-;; Version: 0.7.3
+;; Version: 0.7.4
 ;; Keywords: org
 ;; Package-Requires: ((emacs "31.1") (org "9.7"))
 ;;
@@ -36,11 +36,6 @@
   "Org Dividers group."
   :prefix "org-dividers-"
   :group 'org)
-
-(defcustom org-dividers-hl-title nil
-  "Match regexp for headline title to be styled."
-  :type 'string
-  :group 'org-dividers)
 
 (defcustom org-dividers-hl-match nil
   "Org elements match for filtering by `org-map-entries'.
@@ -175,10 +170,12 @@ For the meaning of BEG, END, and LEN, see `after-change-functions'."
               level-1
               indent-width))))
 
-(defun org-dividers-hl--update (ov win title)
+(defun org-dividers-hl--update (ov element)
   "Update the display of overlay OV with headline TITLE in window WIN.
 Update is not performed when no change is detected in display property."
-  (let* ((face 'org-dividers-hl)
+  (let* ((win (overlay-get ov 'window))
+         (title (org-element-property :title element))
+         (face 'org-dividers-hl)
          (total-width (org-dividers-hl--total-width win face)))
     (unless (and (string= title (overlay-get ov 'title))
                  (= (length (substring-no-properties (or (overlay-get ov 'display) "")))
@@ -206,16 +203,19 @@ Update is not performed when no change is detected in display property."
         (overlay-put ov 'title title))))
   ov)
 
-(defun org-dividers-hl--create (win beg end title)
-  "Create a TITLE overlay for headline spanning BEG to END in window WIN."
-  (let ((ov (make-overlay beg end nil t nil)))
+(defun org-dividers-hl--create (window element)
+  "Create an overlay for the Org headline ELEMENT in the WINDOW."
+  (let* ((title (org-element-property :title element))
+         (beg (org-element-property :begin element))
+         (end (save-excursion (goto-char beg) (line-end-position)))
+         (ov (make-overlay beg end nil t nil)))
     (overlay-put ov 'category 'org-dividers-hl-ov)
-    (overlay-put ov 'window win)
+    (overlay-put ov 'window window)
     (overlay-put ov 'priority -100)
-    (org-dividers-hl--update ov win title)
+    (org-dividers-hl--update ov element)
     (overlay-put ov 'modification-hooks
-                 (list (lambda (ov opened-after-p _beg _end &optional _len)
-                         (when opened-after-p
+                 (list (lambda (ov after-change-p _beg _end &optional _len)
+                         (unless after-change-p
                            (delete-overlay ov)))))
     (overlay-put ov 'isearch-open-invisible t)
     ov))
@@ -223,7 +223,6 @@ Update is not performed when no change is detected in display property."
 (defun org-dividers-hl--redraw (beg end &optional len)
   "Redraw headlines in region from BEG to END.
 See `after-change-functions' for what BEG, END, and LEN means."
-  ;; (remove-overlays beg end 'category 'org-dividers-hl-ov)
   (when (and len (> len 0))
     (dolist (win (get-buffer-window-list (current-buffer) nil t))
       (dolist (ov (overlays-in beg (+ end len)))
@@ -241,23 +240,18 @@ See `after-change-functions' for what BEG, END, and LEN means."
           (goto-char (point-min))
           (org-map-entries
            (lambda ()
-             (let* ((el (org-element-at-point))
-                    (title (org-element-property :title el))
-                    (beg (org-element-property :begin el))
+             (let* ((elmt (org-element-at-point))
+                    (beg (org-element-property :begin elmt))
                     (end (save-excursion (goto-char beg) (line-end-position))))
                (if-let* ((ov (seq-find
                               (lambda (ov)
                                 (when (and (eq (overlay-get ov 'window) win)
-                                           (eq (overlay-get ov 'category) 'org-dividers-hl-ov)
-                                           (eq (overlay-start ov) beg)
-                                           (eq (overlay-end ov) end))
+                                           (eq (overlay-get ov 'category) 'org-dividers-hl-ov))
                                   ov))
                               (overlays-in beg end))))
-                   (if (and org-dividers-hl-title (string-match-p org-dividers-hl-title title))
-                       (org-dividers-hl--update ov win title)
-                     (delete-overlay ov))
-                 (when (and org-dividers-hl-title (string-match-p org-dividers-hl-title title))
-                   (org-dividers-hl--create win beg end title)))))
+                   (unless (overlay-get ov 'saved-display)
+                     (org-dividers-hl--update ov elmt))
+                 (org-dividers-hl--create win elmt))))
            org-dividers-hl-match))))))
 
 (defun org-dividers-hl--remove-all (beg end)
@@ -265,26 +259,6 @@ See `after-change-functions' for what BEG, END, and LEN means."
   (remove-overlays beg end 'category 'org-dividers-hl-ov))
 
 ;;; Minor Mode
-
-;;;###autoload
-(define-minor-mode org-dividers-mode
-  "A minor mode for styling Org headlines and horizontal rules."
-  :group 'org-dividers
-  :lighter "OrgD"
-  (pcase org-dividers-mode
-    ('t
-     (when (boundp 'org-modern-horizontal-rule)
-       (setq-local org-modern-horizontal-rule nil))
-     (jit-lock-register #'org-dividers-mode--jit-lock)
-     (add-hook 'window-configuration-change-hook
-               #'org-dividers-mode--on-window-configuration-change nil t))
-    (_
-     (let ((beg (point-min)) (end (point-max)))
-       (org-dividers-hr--remove-all beg end)
-       (org-dividers-hl--remove-all beg end))
-     (remove-hook 'window-configuration-change-hook
-                  #'org-dividers-mode--on-window-configuration-change t)
-     (jit-lock-unregister #'org-dividers-mode--jit-lock))))
 
 (defun org-dividers-mode--jit-lock (beg end)
   "Run JIT lock fontification from BEG to END."
@@ -297,6 +271,34 @@ See `after-change-functions' for what BEG, END, and LEN means."
               (beg (window-start win))
               (end (window-end win t)))
     (org-dividers-mode--jit-lock beg end)))
+
+(defun org-dividers-mode--on-window-scroll (win beg)
+  (when-let* ((end (window-end win t)))
+    (org-dividers-mode--jit-lock beg end)))
+
+;;;###autoload
+(define-minor-mode org-dividers-mode
+  "A minor mode for styling Org headlines and horizontal rules."
+  :group 'org-dividers
+  :lighter "OrgD"
+  (pcase org-dividers-mode
+    ('t
+     (when (boundp 'org-modern-horizontal-rule)
+       (setq-local org-modern-horizontal-rule nil))
+     ;; (jit-lock-register #'org-dividers-mode--jit-lock)
+     (add-hook 'window-scroll-functions
+               #'org-dividers-mode--on-window-scroll nil t)
+     (add-hook 'window-configuration-change-hook
+               #'org-dividers-mode--on-window-configuration-change nil t))
+    (_
+     (let ((beg (point-min)) (end (point-max)))
+       (org-dividers-hr--remove-all beg end)
+       (org-dividers-hl--remove-all beg end))
+     (remove-hook 'window-scroll-functions
+                  #'org-dividers-mode--on-window-scroll t)
+     (remove-hook 'window-configuration-change-hook
+                  #'org-dividers-mode--on-window-configuration-change t)
+     (jit-lock-unregister #'org-dividers-mode--jit-lock))))
 
 (provide 'org-dividers)
 ;;; org-dividers.el ends here
